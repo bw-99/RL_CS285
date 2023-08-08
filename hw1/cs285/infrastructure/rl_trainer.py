@@ -1,6 +1,8 @@
 from collections import OrderedDict
+import pickle
 import numpy as np
 import time
+from cs285.policies.loaded_gaussian_policy import LoadedGaussianPolicy
 
 import gym
 import torch
@@ -83,6 +85,7 @@ class RL_Trainer(object):
         :param expert_policy:
         """
 
+
         # init vars at beginning of training
         self.total_envsteps = 0
         self.start_time = time.time()
@@ -90,6 +93,7 @@ class RL_Trainer(object):
         for itr in range(n_iter):
             print("\n\n********** Iteration %i ************"%itr)
 
+            
             # decide if videos should be rendered/logged at this iteration
             if itr % self.params['video_log_freq'] == 0 and self.params['video_log_freq'] != -1:
                 self.log_video = True
@@ -144,6 +148,8 @@ class RL_Trainer(object):
             collect_policy,
             batch_size,
     ):
+        
+
         """
         :param itr:
         :param load_initial_expertdata:  path to expert data pkl file
@@ -162,21 +168,74 @@ class RL_Trainer(object):
 
                 # (2) collect `self.params['batch_size']` transitions
 
-        # TODO collect `batch_size` samples to be used for training
-        # HINT1: use sample_trajectories from utils
-        # HINT2: you want each of these collected rollouts to be of length self.params['ep_len']
-        print("\nCollecting data to be used for training...")
-        paths, envsteps_this_batch = TODO
+        min_timesteps_per_batch = batch_size
+        max_path_length = 10
 
-        # collect more rollouts with the same policy, to be saved as videos in tensorboard
-        # note: here, we collect MAX_NVIDEO rollouts, each of length MAX_VIDEO_LEN
-        train_video_paths = None
-        if self.log_video:
-            print('\nCollecting train rollouts to be used for saving videos...')
-            ## TODO look in utils and implement sample_n_trajectories
-            train_video_paths = utils.sample_n_trajectories(self.env, collect_policy, MAX_NVIDEO, MAX_VIDEO_LEN, True)
+        if(itr==0):
+            with open(load_initial_expertdata, 'rb') as f:
+                data_list = pickle.loads(f.read())
+                
+                # for data in data_list:
+                #     for key, value in data.items():
+                #         data[key] = torch.tensor(value)
 
-        return paths, envsteps_this_batch, train_video_paths
+            for key, value in data_list[0].items():
+                print(key, torch.tensor(value).shape)
+            
+            '''
+                observation torch.Size([1000, 111])
+                image_obs torch.Size([0])
+                reward torch.Size([1000])
+                action torch.Size([1000, 8])
+                next_observation torch.Size([1000, 111])
+                terminal torch.Size([1000])
+            '''
+            loaded_paths = []
+            for data in data_list:
+                loaded_path = utils.Path(
+                    data["observation"], 
+                    data["image_obs"], 
+                    data["action"], 
+                    data["reward"], 
+                    data["next_observation"], 
+                    data["terminal"]
+                )
+                loaded_paths.append(loaded_path)
+            
+            # collect more rollouts with the same policy, to be saved as videos in tensorboard
+            # note: here, we collect MAX_NVIDEO rollouts, each of length MAX_VIDEO_LEN
+            train_video_paths = None
+            if self.log_video:
+                print('\nCollecting train rollouts to be used for saving videos...')
+                ## TODO look in utils and implement sample_n_trajectories
+                train_video_paths = utils.sample_n_trajectories(self.env, collect_policy, MAX_NVIDEO, MAX_VIDEO_LEN, True)
+
+            return loaded_paths, 0, train_video_paths
+            
+        else:
+            # print(collect_policy)
+
+            # TODO collect `batch_size` samples to be used for training
+            # HINT1: use sample_trajectories from utils
+            # HINT2: you want each of these collected rollouts to be of length self.params['ep_len']
+            print("\nCollecting data to be used for training...")
+            
+            paths, envsteps_this_batch = utils.sample_trajectories(
+                self.env, 
+                collect_policy, 
+                min_timesteps_per_batch, 
+                max_path_length, 
+            )
+
+            # collect more rollouts with the same policy, to be saved as videos in tensorboard
+            # note: here, we collect MAX_NVIDEO rollouts, each of length MAX_VIDEO_LEN
+            train_video_paths = None
+            if self.log_video:
+                print('\nCollecting train rollouts to be used for saving videos...')
+                ## TODO look in utils and implement sample_n_trajectories
+                train_video_paths = utils.sample_n_trajectories(self.env, collect_policy, MAX_NVIDEO, MAX_VIDEO_LEN, True)
+
+            return paths, envsteps_this_batch, train_video_paths
 
 
     def train_agent(self):
@@ -187,18 +246,25 @@ class RL_Trainer(object):
             # TODO sample some data from the data buffer
             # HINT1: use the agent's sample function
             # HINT2: how much data = self.params['train_batch_size']
-            ob_batch, ac_batch, re_batch, next_ob_batch, terminal_batch = TODO
-
+            
+            ob_batch, ac_batch, re_batch, next_ob_batch, terminal_batch = self.agent.sample(self.params['train_batch_size'])
+            # print(ob_batch.shape)
+            # print(ac_batch.shape)
             # TODO use the sampled data to train an agent
             # HINT: use the agent's train function
             # HINT: keep the agent's training log for debugging
-            train_log = TODO
+            train_log = self.agent.train(ob_batch, ac_batch, re_batch, next_ob_batch, terminal_batch)
             all_logs.append(train_log)
         return all_logs
 
     def do_relabel_with_expert(self, expert_policy, paths):
         print("\nRelabelling collected observations with labels from an expert policy...")
+        # print(len(paths[0]["observation"]))
+        print(len(paths))
 
+        for i in range(len(paths)):
+            paths[i]["action"] = expert_policy.get_action(paths[i]["observation"])
+        
         # TODO relabel collected obsevations (from our policy) with labels from an expert policy
         # HINT: query the policy (using the get_action function) with paths[i]["observation"]
         # and replace paths[i]["action"] with these expert labels
@@ -215,6 +281,7 @@ class RL_Trainer(object):
         eval_paths, eval_envsteps_this_batch = utils.sample_trajectories(self.env, eval_policy, self.params['eval_batch_size'], self.params['ep_len'])
 
         # save eval rollouts as videos in tensorboard event file
+        # print(self.log_video, train_video_paths)
         if self.log_video and train_video_paths != None:
             print('\nCollecting video rollouts eval')
             eval_video_paths = utils.sample_n_trajectories(self.env, eval_policy, MAX_NVIDEO, MAX_VIDEO_LEN, True)

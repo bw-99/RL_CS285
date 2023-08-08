@@ -1,5 +1,11 @@
 import os
+import pickle
 import time
+import sys
+
+import torch
+
+sys.path.append(".")
 
 from cs285.infrastructure.rl_trainer import RL_Trainer
 from cs285.agents.bc_agent import BCAgent
@@ -19,6 +25,8 @@ class BC_Trainer(object):
             'learning_rate': params['learning_rate'],
             'max_replay_buffer_size': params['max_replay_buffer_size'],
             }
+
+        print(agent_params)
 
         self.params = params
         self.params['agent_class'] = BCAgent ## HW1: you will modify this
@@ -107,7 +115,6 @@ def main():
     params['logdir'] = logdir
     if not(os.path.exists(logdir)):
         os.makedirs(logdir)
-
 
     ###################
     ### RUN TRAINING

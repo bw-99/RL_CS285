@@ -11,6 +11,8 @@ class BCAgent(BaseAgent):
         self.env = env
         self.agent_params = agent_params
 
+        # print(agent_params)
+
         # actor/policy
         self.actor = MLPPolicySL(
             self.agent_params['ac_dim'],

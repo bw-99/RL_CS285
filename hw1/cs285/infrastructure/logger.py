@@ -15,7 +15,7 @@ class Logger:
         self._summ_writer.add_scalar('{}'.format(name), scalar, step_)
 
     def log_scalars(self, scalar_dict, group_name, step, phase):
-        """Will log all scalars in the same plot."""
+        """Will log all scalars in the ssame plot."""
         self._summ_writer.add_scalars('{}_{}'.format(group_name, phase), scalar_dict, step)
 
     def log_image(self, image, name, step):
