@@ -1,9 +1,10 @@
+from typing import List
 import numpy as np
-
+import functools
 from .base_agent import BaseAgent
 from cs285.policies.MLP_policy import MLPPolicyPG
 from cs285.infrastructure.replay_buffer import ReplayBuffer
-
+import torch.nn.functional as F
 
 class PGAgent(BaseAgent):
     def __init__(self, env, agent_params):
@@ -32,7 +33,7 @@ class PGAgent(BaseAgent):
         # replay buffer
         self.replay_buffer = ReplayBuffer(1000000)
 
-    def train(self, observations, actions, rewards_list, next_observations, terminals):
+    def train(self, observations, actions, rewards_list: np.ndarray, next_observations, terminals):
 
         """
             Training a PG agent refers to updating its actor using the given observations/actions
@@ -46,9 +47,14 @@ class PGAgent(BaseAgent):
         # HINT2: look at the MLPPolicyPG class for how to update the policy
             # and obtain a train_log
 
+        q_values = self.calculate_q_vals(rewards_list)
+        advantages = self.estimate_advantage(observations, rewards_list, q_values, terminals)
+        
+        train_log = self.actor.update(observations, actions, advantages, q_values)
+
         return train_log
 
-    def calculate_q_vals(self, rewards_list):
+    def calculate_q_vals(self, rewards_list: np.ndarray):
 
         """
             Monte Carlo estimation of the Q function.
@@ -68,16 +74,18 @@ class PGAgent(BaseAgent):
         # Estimate Q^{pi}(s_t, a_t) by the total discounted reward summed over entire trajectory
         # HINT3: q_values should be a 1D numpy array where the indices correspond to the same
         # ordering as observations, actions, etc.
+        
 
         if not self.reward_to_go:
-            TODO
+            q_values = np.concatenate([self._discounted_return(r) for r in rewards_list])
 
         # Case 2: reward-to-go PG
         # Estimate Q^{pi}(s_t, a_t) by the discounted sum of rewards starting from t
         else:
-            TODO
+            q_values = np.concatenate([self._discounted_cumsum(r) for r in rewards_list])
 
-        return q_values
+        print(q_values.shape)
+        return np.array(q_values, dtype=np.float64)
 
     def estimate_advantage(self, obs, rews_list, q_values, terminals):
 
@@ -117,6 +125,7 @@ class PGAgent(BaseAgent):
                         ## 0 otherwise.
                     ## HINT 2: self.gae_lambda is the lambda value in the
                         ## GAE formula
+                    pass
 
                 # remove dummy advantage
                 advantages = advantages[:-1]
@@ -133,8 +142,8 @@ class PGAgent(BaseAgent):
         if self.standardize_advantages:
             ## TODO: standardize the advantages to have a mean of zero
             ## and a standard deviation of one
-            advantages = TODO
-
+            advantages = (advantages - np.mean(advantages, axis=0)) / np.std(advantages, axis=0)
+            print(np.mean(advantages, axis=0))
         return advantages
 
     #####################################################
@@ -150,7 +159,7 @@ class PGAgent(BaseAgent):
     ################## HELPER FUNCTIONS #################
     #####################################################
 
-    def _discounted_return(self, rewards):
+    def _discounted_return(self, rewards: List[float]):
         """
             Helper function
 
@@ -160,8 +169,15 @@ class PGAgent(BaseAgent):
         """
 
         # TODO: create list_of_discounted_returns
+        total_reward_list = np.array(rewards)
 
-        return list_of_discounted_returns
+        for j in range(len(rewards)):
+            cur_reward = 0
+            for k in range(len(rewards)-1):
+                cur_reward += pow(self.gamma, k) * rewards[k]
+            total_reward_list[j] += cur_reward
+        return(total_reward_list.tolist())
+
 
     def _discounted_cumsum(self, rewards):
         """
@@ -174,4 +190,12 @@ class PGAgent(BaseAgent):
         # HINT: it is possible to write a vectorized solution, but a solution
             # using a for loop is also fine
 
-        return list_of_discounted_cumsums
+        total_reward_list = np.array(rewards, dtype=object)
+
+        for j in range(len(rewards)-1):
+            cur_reward = 0
+            for k in range(j+1, len(rewards)):
+                cur_reward += pow(self.gamma, k-j) * rewards[k]
+            total_reward_list[j] += cur_reward
+
+        return total_reward_list

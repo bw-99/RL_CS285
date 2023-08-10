@@ -1,8 +1,11 @@
 import os
 import time
+import sys
+sys.path.append(".")
 
 from cs285.infrastructure.rl_trainer import RL_Trainer
 from cs285.agents.pg_agent import PGAgent
+
 
 class PG_Trainer(object):
 
